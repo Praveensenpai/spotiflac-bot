@@ -24,7 +24,7 @@ def _allowed_ids() -> list[int]:
 
 
 def _services() -> list[str]:
-    raw = os.getenv("SERVICES", "tidal-web,qobuz-web,deezer,amazon,ytmusic-spotiflac")
+    raw = os.getenv("SERVICES", "tidal-web,qobuz-web,deezer,amazon")
     return [s.strip() for s in raw.split(",") if s.strip()]
 
 
