@@ -87,32 +87,42 @@
 
 ## ⚡ Quickstart
 
-### 1. Clone & Install Dependencies
+### 🪄 One-Liner Magic (Recommended)
 
-Managed exclusively with [`uv`](https://docs.astral.sh/uv/):
+Set up system dependencies (`xvfb`, `ffmpeg`, `chromium`), install [`uv`](https://docs.astral.sh/uv/), synchronize packages, configure credentials, and deploy the systemd service in one automated command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Praveensenpai/spotiflac-bot/main/install.sh | bash
+```
+
+<br>
+
+### 🛠️ Local Clone & Install
+
+If you already have the repository cloned:
 
 ```bash
 git clone https://github.com/Praveensenpai/spotiflac-bot.git
 cd spotiflac-bot
-uv sync
+chmod +x install.sh
+./install.sh
 ```
 
-### 2. Configure Credentials & Settings
+---
 
-```bash
-# Copy templates
-cp .env.example .env
-cp config.example.toml config.toml
-```
+## ⚙️ Configuration & Credentials
 
-1. Add your Telegram Bot token in `.env`:
+The installer creates your configuration files automatically:
+
+1. **Telegram Credentials ([`.env`](.env))**:
    ```env
    BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
    ```
 
-2. Add your Telegram User ID in `config.toml`:
+2. **User Access Whitelist ([`config.toml`](config.toml))**:
    ```toml
    [bot]
+   # Restrict to your Telegram User ID (leave [] to permit all users)
    allowed_user_ids = [12345678888]
    ```
 
@@ -120,63 +130,26 @@ cp config.example.toml config.toml
 
 ## 🚀 Running the Bot
 
-### Option A: Run Interactively in Terminal
+### Option A: 24/7 Background Systemd Service (Automated)
 
-To start the bot directly in your active shell:
+`install.sh` automatically deploys and registers the systemd unit with `DISPLAY=:99` for headless execution:
 
 ```bash
-cd /home/paisen/Projects/spotiflac-bot
-uv run python -m spotiflac_bot
+sudo systemctl status spotiflac-bot    # Check service status
+journalctl -u spotiflac-bot -f         # Live log streaming
+sudo systemctl restart spotiflac-bot   # Restart after config edits
+sudo systemctl stop spotiflac-bot      # Stop service
 ```
 
 ---
 
-### Option B: Headless Linux VPS / 24/7 Background Service
+### Option B: Run Interactively in Shell
 
-On headless Linux servers, Cloudflare Turnstile challenges block standard headless browsers. SpotiFLAC solves this autonomously by detecting headless environments, automatically launching a virtual display via **Xvfb** (`:99`), and driving Chromium offscreen without needing a physical monitor.
-
-#### 1. Install VPS System Dependencies
+To test or run directly in your current terminal:
 
 ```bash
-# Ubuntu / Debian VPS
-sudo apt-get update && sudo apt-get install -y \
-  curl \
-  git \
-  ffmpeg \
-  nodejs \
-  npm \
-  xvfb \
-  chromium-browser
-
-# If your distro lacks the chromium-browser apt package:
-# wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-# sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
-```
-
-#### 2. Deploy Systemd Service
-
-A production-ready unit file is included at [`spotiflac-bot.service`](spotiflac-bot.service):
-
-```bash
-# 1. Copy unit file to systemd directory
-sudo cp spotiflac-bot.service /etc/systemd/system/
-
-# 2. Adjust User and WorkingDirectory to match your server path
-sudo nano /etc/systemd/system/spotiflac-bot.service
-
-# 3. Reload systemd & start bot
-sudo systemctl daemon-reload
-sudo systemctl enable --now spotiflac-bot
-
-# 4. Monitor live service logs
-journalctl -u spotiflac-bot -f
-```
-
-#### 3. Managing the Service
-```bash
-sudo systemctl restart spotiflac-bot   # Restart bot
-sudo systemctl stop spotiflac-bot      # Stop bot
-sudo systemctl status spotiflac-bot    # View status
+export DISPLAY=:99
+uv run python -m spotiflac_bot
 ```
 
 ---

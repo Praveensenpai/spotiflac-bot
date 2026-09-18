@@ -164,6 +164,11 @@ Telegram Update ──► handlers.py (_guard → handle_message)
 - **Responsibility**: `python -m spotiflac_bot` entrypoint.
 - **Calls**: `bot.app.run()`
 
+### `install.sh` (Role: cli/infra, Lines: 185)
+- **Responsibility**: Production-grade automated installer & systemd setup script (`set -euo pipefail`).
+- **Functionality**: Auto-installs system packages (`xvfb`, `ffmpeg`, `chromium`, `curl`, `git`), installs `uv`, runs `uv sync`, sets up `.env` and `config.toml`, and configures & enables `/etc/systemd/system/spotiflac-bot.service` with `DISPLAY=:99`.
+- **Side Effects**: Installs system packages via `apt`, modifies systemd unit files, enables service.
+
 ## 4. Execution Lifecycle
 
 1. `__main__.py` → `run()`
@@ -185,6 +190,10 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Created production-grade `install.sh` and modernized `README.md`:
+  - Added fully automated installer script `install.sh` adhering to `bash-clean-code` (`set -euo pipefail`, cleanup traps, TTY awareness).
+  - Automatically installs system dependencies (`xvfb`, `ffmpeg`, `chromium-browser`), `uv`, synchronizes project virtualenv, prompts for `BOT_TOKEN`, and deploys & enables `/etc/systemd/system/spotiflac-bot.service` with `DISPLAY=:99`.
+  - Added `🪄 One-Liner Magic` quickstart snippet to `README.md` and updated `spotiflac-bot.service` template.
 - **2026-09-18**: Fixed inaccurate cover art and metadata:
   - Extracted audio metadata and thumbnail logic into dedicated `services/audio_meta.py` module (<150 lines).
   - Added native Spotify metadata resolution for direct Spotify URLs in `services/resolver.py`.

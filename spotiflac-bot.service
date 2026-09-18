@@ -8,6 +8,8 @@ Type=simple
 User=%USER%
 WorkingDirectory=/home/paisen/Projects/spotiflac-bot
 EnvironmentFile=/home/paisen/Projects/spotiflac-bot/.env
+Environment=DISPLAY=:99
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/bin/env uv run python -m spotiflac_bot
 Restart=always
 RestartSec=5
