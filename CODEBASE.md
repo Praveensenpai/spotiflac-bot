@@ -132,6 +132,7 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Implemented multi-pass quality probing across providers (`_attempt_tier_download`, `_run_download`) to guarantee highest resolution is found first before stepping down. Added `_detect_resolution` via mutagen FLAC header inspection to show real-time bit-depth and sample rate in Telegram audio messages.
 - **2026-09-18**: Added configurable audio quality tier (`quality = "HI_RES_LOSSLESS"` or `"DOLBY_ATMOS"`) and automatic cascading fallback (`allow_fallback = true`) in `config.toml`, `config.py`, and `downloader.py`.
 - **2026-09-18**: Migrated structured configuration to `config.toml` via native `tomllib` (bot whitelist, download settings, lossless services, and extension registries), keeping `.env` strictly for secrets (`BOT_TOKEN`).
 - **2026-09-18**: Added real-time progress ticker (`ProgressUpdate`, `_monitor_progress`) with visual ASCII progress bar, byte transfer rate, and elapsed time updated every 3.5s in Telegram.

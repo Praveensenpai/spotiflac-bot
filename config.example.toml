@@ -23,10 +23,10 @@ allow_fallback = true
 
 # Priority-ordered list of lossless FLAC providers
 services = [
-    "tidal-web",
     "qobuz-web",
-    "deezer",
+    "tidal-web",
     "amazon",
+    "deezer",
 ]
 
 [extensions]

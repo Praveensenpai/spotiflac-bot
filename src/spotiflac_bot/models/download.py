@@ -17,6 +17,7 @@ class DownloadResult:
     title: str
     artist: str
     file_size_bytes: int
+    resolution: str = ""
 
 
 @dataclass(frozen=True)

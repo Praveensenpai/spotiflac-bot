@@ -109,9 +109,11 @@ async def _send_audio_result(
 ) -> None:
     final_title = result.title or title or "Audio"
     final_artist = result.artist or artist or "Unknown Artist"
+    res_badge = f"\n✨ `{_esc(result.resolution)}`" if result.resolution else ""
     caption = (
         f"🎵 *{_esc(final_title)}*\n"
-        f"👤 {_esc(final_artist)}\n"
+        f"👤 {_esc(final_artist)}"
+        f"{res_badge}\n"
         f"💾 `{result.file_size_bytes // (1024 * 1024)} MB`"
     )
     with result.file_path.open("rb") as audio_file:

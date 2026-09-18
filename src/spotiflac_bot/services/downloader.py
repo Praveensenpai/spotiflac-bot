@@ -9,8 +9,10 @@ import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from mutagen.flac import FLAC
 from SpotiFLAC import SpotiFLAC
 from SpotiFLAC.core.progress import DownloadManager
+from SpotiFLAC.core.quality import quality_fallback_chain
 from SpotiFLAC.extensions.manager import ExtensionManager
 
 from spotiflac_bot.config import settings
@@ -36,19 +38,57 @@ def ensure_extensions() -> None:
         log.warning("Extension check encountered issue: %s", exc)
 
 
+def _detect_resolution(file_path: Path) -> str:
+    """Inspect audio header to detect true bit-depth and sample rate."""
+    if file_path.suffix.lower() == ".flac":
+        try:
+            # upstream mutagen lacks typed stubs
+            audio = FLAC(file_path)  # type: ignore[no-untyped-call]
+            bits = getattr(audio.info, "bits_per_sample", 0)
+            rate_khz = getattr(audio.info, "sample_rate", 0) / 1000.0
+            if bits > 0 and rate_khz > 0:
+                return f"{bits}-bit / {rate_khz:.1f} kHz FLAC"
+        except Exception:
+            pass
+        return "Lossless FLAC"
+    return file_path.suffix.lstrip(".").upper()
+
+
+def _attempt_tier_download(
+    url: str, out_dir: Path, tier: str, allow_fb: bool
+) -> list[Path]:
+    log.info("Probing providers for tier: %s (fallback=%s)", tier, allow_fb)
+    try:
+        SpotiFLAC(
+            url=url,
+            output_dir=str(out_dir),
+            services=settings.services,
+            quality=tier,
+            allow_fallback=allow_fb,
+            use_artist_subfolders=False,
+            use_album_subfolders=False,
+        )
+        return sorted(out_dir.glob("*.flac")) + sorted(out_dir.glob("*.mp3"))
+    except Exception as exc:
+        log.debug("Tier %s attempt failed: %s", tier, exc)
+        return []
+
+
 def _run_download(url: str, out_dir: Path) -> list[Path]:
-    """Blocking SpotiFLAC call — executed in a thread pool."""
-    SpotiFLAC(
-        url=url,
-        output_dir=str(out_dir),
-        services=settings.services,
-        quality=settings.quality,
-        allow_fallback=settings.allow_fallback,
-        use_artist_subfolders=False,
-        use_album_subfolders=False,
-    )
-    files = sorted(out_dir.glob("*.flac")) + sorted(out_dir.glob("*.mp3"))
-    return files
+    """Cascades from highest quality tier down to lowest across all providers."""
+    chain = quality_fallback_chain(settings.quality)
+    if not settings.allow_fallback:
+        chain = [chain[0]]
+
+    for idx, tier in enumerate(chain):
+        is_last = idx == len(chain) - 1
+        allow_fb = is_last
+        files = _attempt_tier_download(url, out_dir, tier, allow_fb)
+        if files:
+            log.info("Resolved at tier %s: %s", tier, files[0].name)
+            return files
+
+    return sorted(out_dir.glob("*.flac")) + sorted(out_dir.glob("*.mp3"))
 
 
 def _collect_metadata(file_path: Path) -> tuple[str, str]:
@@ -172,11 +212,13 @@ async def download_track(
             )
 
         title, artist = _collect_metadata(file_path)
+        resolution = _detect_resolution(file_path)
         return DownloadResult(
             file_path=file_path,
             title=title,
             artist=artist,
             file_size_bytes=size,
+            resolution=resolution,
         )
 
     except (DownloadFailedError, FileTooLargeError):
