@@ -132,6 +132,7 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Added configurable audio quality tier (`quality = "HI_RES_LOSSLESS"` or `"DOLBY_ATMOS"`) and automatic cascading fallback (`allow_fallback = true`) in `config.toml`, `config.py`, and `downloader.py`.
 - **2026-09-18**: Migrated structured configuration to `config.toml` via native `tomllib` (bot whitelist, download settings, lossless services, and extension registries), keeping `.env` strictly for secrets (`BOT_TOKEN`).
 - **2026-09-18**: Added real-time progress ticker (`ProgressUpdate`, `_monitor_progress`) with visual ASCII progress bar, byte transfer rate, and elapsed time updated every 3.5s in Telegram.
 - **2026-09-18**: Integrated SpotiFLAC extension registry (`SPOTIFLAC_REGISTRIES`) and auto-bootstrap in `app.py`. Added Spotify metadata search to `resolver.py` so song titles automatically resolve to track URLs. Expanded URL regex for regional paths (`intl-...`).

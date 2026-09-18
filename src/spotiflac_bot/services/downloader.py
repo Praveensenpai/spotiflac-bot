@@ -42,6 +42,8 @@ def _run_download(url: str, out_dir: Path) -> list[Path]:
         url=url,
         output_dir=str(out_dir),
         services=settings.services,
+        quality=settings.quality,
+        allow_fallback=settings.allow_fallback,
         use_artist_subfolders=False,
         use_album_subfolders=False,
     )

@@ -12,6 +12,15 @@ download_dir = "/tmp/spotiflac"
 # Telegram max file size threshold in MB (Telegram hard limit is 50 MB)
 max_file_mb = 49
 
+# Target quality tier:
+# - "HI_RES_LOSSLESS": 24-bit Hi-Res master (up to 192kHz) -> falls back to 16-bit FLAC
+# - "DOLBY_ATMOS": Dolby Atmos spatial audio -> falls back to 24-bit -> 16-bit FLAC
+# - "LOSSLESS": Standard 16-bit 44.1kHz CD quality FLAC
+quality = "HI_RES_LOSSLESS"
+
+# Automatically step down quality tier if highest resolution is unavailable
+allow_fallback = true
+
 # Priority-ordered list of lossless FLAC providers
 services = [
     "tidal-web",

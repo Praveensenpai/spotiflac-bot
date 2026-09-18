@@ -35,10 +35,22 @@ def _parse_allowed_ids(bot_cfg: object) -> list[int]:
     return []
 
 
-def _parse_download_cfg(dl_cfg: object) -> tuple[Path, int, list[str]]:
+@dataclass(frozen=True)
+class DownloadConfig:
+    download_dir: Path
+    max_file_bytes: int
+    services: list[str]
+    quality: str
+    allow_fallback: bool
+
+
+def _parse_download_cfg(dl_cfg: object) -> DownloadConfig:
     dl_dir = Path("/tmp/spotiflac")
     max_mb = 49
     services = ["tidal-web", "qobuz-web", "deezer", "amazon"]
+    quality = "HI_RES_LOSSLESS"
+    allow_fallback = True
+
     if isinstance(dl_cfg, dict):
         if "download_dir" in dl_cfg:
             dl_dir = Path(str(dl_cfg["download_dir"]))
@@ -46,7 +58,18 @@ def _parse_download_cfg(dl_cfg: object) -> tuple[Path, int, list[str]]:
             max_mb = int(str(dl_cfg["max_file_mb"]))
         if "services" in dl_cfg and isinstance(dl_cfg["services"], list):
             services = [str(s) for s in dl_cfg["services"]]
-    return dl_dir, max_mb, services
+        if "quality" in dl_cfg:
+            quality = str(dl_cfg["quality"]).strip().upper()
+        if "allow_fallback" in dl_cfg:
+            allow_fallback = bool(dl_cfg["allow_fallback"])
+
+    return DownloadConfig(
+        download_dir=dl_dir,
+        max_file_bytes=max_mb * 1024 * 1024,
+        services=services,
+        quality=quality,
+        allow_fallback=allow_fallback,
+    )
 
 
 def _parse_registries(ext_cfg: object) -> list[str]:
@@ -65,16 +88,34 @@ def _parse_registries(ext_cfg: object) -> list[str]:
 class Settings:
     bot_token: str
     allowed_user_ids: list[int]
-    download_dir: Path
-    services: list[str]
+    download: DownloadConfig
     registries: list[str]
-    max_file_bytes: int
+
+    @property
+    def download_dir(self) -> Path:
+        return self.download.download_dir
+
+    @property
+    def max_file_bytes(self) -> int:
+        return self.download.max_file_bytes
+
+    @property
+    def services(self) -> list[str]:
+        return self.download.services
+
+    @property
+    def quality(self) -> str:
+        return self.download.quality
+
+    @property
+    def allow_fallback(self) -> bool:
+        return self.download.allow_fallback
 
     @classmethod
     def load(cls) -> Settings:
         cfg = _read_toml_config()
         allowed_ids = _parse_allowed_ids(cfg.get("bot"))
-        dl_dir, max_mb, services = _parse_download_cfg(cfg.get("download"))
+        dl_config = _parse_download_cfg(cfg.get("download"))
         registries = _parse_registries(cfg.get("extensions"))
 
         if registries and "SPOTIFLAC_REGISTRIES" not in os.environ:
@@ -83,10 +124,8 @@ class Settings:
         return cls(
             bot_token=_require_secret("BOT_TOKEN"),
             allowed_user_ids=allowed_ids,
-            download_dir=dl_dir,
-            services=services,
+            download=dl_config,
             registries=registries,
-            max_file_bytes=max_mb * 1024 * 1024,
         )
 
 
