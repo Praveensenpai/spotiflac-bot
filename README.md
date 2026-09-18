@@ -113,7 +113,7 @@ cp config.example.toml config.toml
 2. Add your Telegram User ID in `config.toml`:
    ```toml
    [bot]
-   allowed_user_ids = [8703708885]
+   allowed_user_ids = [12345678888]
    ```
 
 ---
