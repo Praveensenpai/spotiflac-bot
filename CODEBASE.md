@@ -90,7 +90,7 @@ Telegram Update ──► handlers.py (_guard → handle_message)
   def cancel_keyboard() -> InlineKeyboardMarkup
   ```
 
-### `src/spotiflac_bot/bot/handlers.py` (Role: api, Lines: 131)
+### `src/spotiflac_bot/bot/handlers.py` (Role: api, Lines: 245)
 - **Responsibility**: All Telegram update handlers — auth guard, download flow, upload.
 - **Public**:
   ```python
@@ -98,8 +98,13 @@ Telegram Update ──► handlers.py (_guard → handle_message)
   async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
   async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
   ```
-- **Private**: `_guard(update) -> tuple[Message, int]`, `_esc(text: str) -> str`
+- **Private**: `_guard(update) -> tuple[Message, int]`, `_send_audio_result(...)`
 - **Side Effects**: Telegram API calls (reply_text, reply_audio, edit_text, delete)
+
+### `src/spotiflac_bot/bot/progress.py` (Role: api, Lines: 98)
+- **Responsibility**: Rich Unicode progress card rendering and upload stream byte tracking.
+- **Types**: `ProgressCardData`, `TrackedFileReader`
+- **Public**: `format_size`, `format_time`, `render_bar`, `esc_md`, `render_progress_card`
 
 ### `src/spotiflac_bot/bot/app.py` (Role: api, Lines: 26)
 - **Responsibility**: Application factory + run() entry point.
@@ -132,6 +137,7 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Added rich Unicode block progress bar (`[████████░░░░]`) and real-time streaming upload tracking via `bot/progress.py` (`TrackedFileReader`, `render_progress_card`) with transfer rate and ETA estimates.
 - **2026-09-18**: Implemented multi-pass quality probing across providers (`_attempt_tier_download`, `_run_download`) to guarantee highest resolution is found first before stepping down. Added `_detect_resolution` via mutagen FLAC header inspection to show real-time bit-depth and sample rate in Telegram audio messages.
 - **2026-09-18**: Added configurable audio quality tier (`quality = "HI_RES_LOSSLESS"` or `"DOLBY_ATMOS"`) and automatic cascading fallback (`allow_fallback = true`) in `config.toml`, `config.py`, and `downloader.py`.
 - **2026-09-18**: Migrated structured configuration to `config.toml` via native `tomllib` (bot whitelist, download settings, lossless services, and extension registries), keeping `.env` strictly for secrets (`BOT_TOKEN`).

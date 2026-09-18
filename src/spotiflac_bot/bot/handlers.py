@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import io
 import logging
+import time
+from collections.abc import Callable
 
 from telegram import Message, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
+from spotiflac_bot.bot.progress import (
+    ProgressCardData,
+    TrackedFileReader,
+    esc_md,
+    render_progress_card,
+)
 from spotiflac_bot.config import settings
 from spotiflac_bot.exceptions import (
     DownloadFailedError,
@@ -32,8 +42,7 @@ _WELCOME = (
 )
 
 _SEARCHING = "🔍 Searching Spotify for match…"
-_DOWNLOADING = "⏳ Downloading lossless FLAC via provider extensions…"
-_UPLOADING = "📤 Download done\\! Uploading to Telegram…"
+_DOWNLOADING = "⏳ Probing providers for highest resolution FLAC…"
 
 
 def _is_authorized(user_id: int) -> bool:
@@ -51,41 +60,90 @@ def _guard(update: Update) -> tuple[Message, int]:
     return update.message, user_id
 
 
-def _format_size(num_bytes: int) -> str:
-    mb = num_bytes / (1024 * 1024)
-    return f"{mb:.1f} MB"
+async def _run_upload_ticker(
+    status: Message,
+    result: DownloadResult,
+    get_bytes: Callable[[], int],
+    stop_event: asyncio.Event,
+) -> None:
+    start_time = time.time()
+    last_b = 0
+    last_t = start_time
+    total = result.file_size_bytes
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.sleep(3.5)
+            if stop_event.is_set():
+                break
+            now = time.time()
+            cur_b = get_bytes()
+            dt = now - last_t
+            spd = ((cur_b - last_b) / (1024 * 1024)) / dt if dt > 0 else 0.0
+            last_b = cur_b
+            last_t = now
+
+            card = render_progress_card(
+                ProgressCardData(
+                    stage_icon="📤",
+                    stage_name="Uploading to Telegram",
+                    title=result.title,
+                    artist=result.artist,
+                    resolution=result.resolution,
+                    bytes_done=cur_b,
+                    total_bytes=total,
+                    speed_mbps=round(spd, 2),
+                    elapsed_seconds=int(now - start_time),
+                )
+            )
+            with contextlib.suppress(Exception):
+                await status.edit_text(card, parse_mode=ParseMode.MARKDOWN_V2)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
 
 
-def _format_time(seconds: int) -> str:
-    mins, secs = divmod(seconds, 60)
-    return f"{mins:02d}:{secs:02d}"
+async def _send_audio_result(
+    message: Message,
+    status: Message,
+    result: DownloadResult,
+) -> None:
+    total_bytes = result.file_size_bytes
+    uploaded_bytes = 0
 
+    def _on_chunk(count: int) -> None:
+        nonlocal uploaded_bytes
+        uploaded_bytes = count
 
-def _render_bar(percent: float | None, length: int = 12) -> str:
-    if percent is None or percent <= 0:
-        return "▱" * length
-    filled = max(0, min(length, int(length * (percent / 100.0))))
-    return "▰" * filled + "▱" * (length - filled)
-
-
-def _format_progress_text(update: ProgressUpdate, title: str, artist: str) -> str:
-    track_info = f"*{_esc(title)}* — {_esc(artist)}" if title else "Lossless Audio"
-    bar = _render_bar(update.percent)
-    size_str = _format_size(update.downloaded_bytes)
-    if update.total_bytes and update.total_bytes > 0:
-        size_disp = f"{size_str} / {_format_size(update.total_bytes)}"
-    else:
-        size_disp = size_str
-
-    pct_str = f"{update.percent:.0f}%" if update.percent is not None else ""
-    speed_str = f"{update.speed_mbps:.1f} MB/s"
-    time_str = _format_time(update.elapsed_seconds)
-
-    return (
-        f"⏳ Downloading: {track_info}\n\n"
-        f"`{bar}` {pct_str} \\({_esc(size_disp)}\\)\n"
-        f"⚡ Speed: `{_esc(speed_str)}` · ⏱ `{_esc(time_str)}`"
+    stop_event = asyncio.Event()
+    ticker = asyncio.create_task(
+        _run_upload_ticker(status, result, lambda: uploaded_bytes, stop_event)
     )
+
+    try:
+        with io.FileIO(str(result.file_path), "rb") as raw_f:
+            tracked_io = TrackedFileReader(raw_f, total_bytes, _on_chunk)
+            res_badge = (
+                f"\n✨ `{esc_md(result.resolution)}`" if result.resolution else ""
+            )
+            caption = (
+                f"🎵 *{esc_md(result.title)}*\n"
+                f"👤 {_esc(result.artist)}"
+                f"{res_badge}\n"
+                f"💾 `{total_bytes // (1024 * 1024)} MB`"
+            )
+            await message.reply_audio(
+                audio=tracked_io,
+                caption=caption,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                filename=result.file_path.name,
+            )
+    finally:
+        stop_event.set()
+        ticker.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await ticker
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -102,27 +160,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await cmd_start(update, context)
-
-
-async def _send_audio_result(
-    message: Message, result: DownloadResult, title: str, artist: str
-) -> None:
-    final_title = result.title or title or "Audio"
-    final_artist = result.artist or artist or "Unknown Artist"
-    res_badge = f"\n✨ `{_esc(result.resolution)}`" if result.resolution else ""
-    caption = (
-        f"🎵 *{_esc(final_title)}*\n"
-        f"👤 {_esc(final_artist)}"
-        f"{res_badge}\n"
-        f"💾 `{result.file_size_bytes // (1024 * 1024)} MB`"
-    )
-    with result.file_path.open("rb") as audio_file:
-        await message.reply_audio(
-            audio=audio_file,
-            caption=caption,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            filename=result.file_path.name,
-        )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -155,7 +192,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     async def _on_progress(prog: ProgressUpdate) -> None:
-        card = _format_progress_text(prog, title, artist)
+        card = render_progress_card(
+            ProgressCardData(
+                stage_icon="📥",
+                stage_name="Downloading FLAC",
+                title=title,
+                artist=artist,
+                resolution="",
+                bytes_done=prog.downloaded_bytes,
+                total_bytes=prog.total_bytes,
+                speed_mbps=prog.speed_mbps,
+                elapsed_seconds=prog.elapsed_seconds,
+            )
+        )
         with contextlib.suppress(Exception):
             await status.edit_text(card, parse_mode=ParseMode.MARKDOWN_V2)
 
@@ -163,8 +212,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     try:
         result = await download_track(request, on_progress=_on_progress)
-        await status.edit_text(_UPLOADING, parse_mode=ParseMode.MARKDOWN_V2)
-        await _send_audio_result(message, result, title, artist)
+        await _send_audio_result(message, status, result)
         await status.delete()
         cleanup_session(result)
 
@@ -188,5 +236,4 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def _esc(text: str) -> str:
     """Escape special MarkdownV2 characters."""
-    special = r"\_*[]()~`>#+-=|{}.!"
-    return "".join(f"\\{c}" if c in special else c for c in text)
+    return esc_md(text)
