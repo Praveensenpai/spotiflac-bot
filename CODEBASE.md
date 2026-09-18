@@ -190,6 +190,9 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Enhanced `install.sh` and installer documentation:
+  - Added interactive prompt support for `BOT_TOKEN` and `allowed_user_ids` reading from `/dev/tty` for reliable piped execution (`curl | bash`).
+  - Updated `README.md` one-liner to use the zero-cache GitHub API raw endpoint (`Accept: application/vnd.github.v3.raw`) to bypass Fastly CDN 300s cache on `raw.githubusercontent.com`.
 - **2026-09-18**: Created production-grade `install.sh` and modernized `README.md`:
   - Added fully automated installer script `install.sh` adhering to `bash-clean-code` (`set -euo pipefail`, cleanup traps, TTY awareness).
   - Automatically installs system dependencies (`xvfb`, `ffmpeg`, `chromium-browser`), `uv`, synchronizes project virtualenv, prompts for `BOT_TOKEN`, and deploys & enables `/etc/systemd/system/spotiflac-bot.service` with `DISPLAY=:99`.
