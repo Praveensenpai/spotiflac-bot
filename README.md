@@ -50,24 +50,35 @@ uv sync
 
 ### 2. Configure
 
-```bash
-cp .env.example .env
-$EDITOR .env
-```
+1. **Set secrets in `.env`**:
+   ```bash
+   cp .env.example .env
+   ```
+   Add your Telegram bot token:
+   ```env
+   BOT_TOKEN=your_telegram_bot_token_here
+   ```
 
-Fill in your values:
+2. **Customize settings in `config.toml`**:
+   ```toml
+   [bot]
+   allowed_user_ids = [123456789] # Your Telegram user ID
 
-```env
-BOT_TOKEN=your_telegram_bot_token_here
-ALLOWED_USER_IDS=123456789        # your Telegram user ID (leave empty = allow all)
-SERVICES=tidal,qobuz,amazon,deezer
-DOWNLOAD_DIR=/tmp/spotiflac
-MAX_FILE_MB=49
-```
+   [download]
+   download_dir = "/tmp/spotiflac"
+   max_file_mb = 49
+   services = [
+       "tidal-web",
+       "qobuz-web",
+       "deezer",
+       "amazon",
+   ]
 
-> [!IMPORTANT]
-> You need SpotiFLAC provider extensions configured separately.
-> Join [t.me/SpotiFLAC_Chat](https://t.me/SpotiFLAC_Chat) for extension setup guides.
+   [extensions]
+   registries = [
+       "https://raw.githubusercontent.com/zarzet/SpotiFLAC-Extension/main/registry.json",
+   ]
+   ```
 
 ### 3. Run
 
@@ -79,13 +90,19 @@ uv run python -m spotiflac_bot
 
 ## ⚙️ Configuration Reference
 
-| Variable | Default | Description |
+### Secrets (`.env`)
+| Variable | Required | Description |
 |---|---|---|
-| `BOT_TOKEN` | **required** | BotFather token |
-| `ALLOWED_USER_IDS` | *(empty = all)* | Comma-separated Telegram user IDs |
-| `SERVICES` | `tidal,qobuz,amazon,deezer` | Provider priority order |
-| `DOWNLOAD_DIR` | `/tmp/spotiflac` | Temp dir for downloads |
-| `MAX_FILE_MB` | `49` | Reject files larger than this (Telegram cap = 50 MB) |
+| `BOT_TOKEN` | **Yes** | Telegram Bot token from @BotFather |
+
+### Application Settings (`config.toml`)
+| Section | Key | Default | Description |
+|---|---|---|---|
+| `[bot]` | `allowed_user_ids` | `[]` *(all allowed)* | List of authorized Telegram user IDs |
+| `[download]` | `download_dir` | `"/tmp/spotiflac"` | Staging directory for audio files |
+| `[download]` | `max_file_mb` | `49` | Max size before Telegram limit rejection |
+| `[download]` | `services` | `["tidal-web", ...]` | Lossless FLAC providers in priority order |
+| `[extensions]` | `registries` | `["https://..."]` | Extension registry repository URLs |
 
 ---
 

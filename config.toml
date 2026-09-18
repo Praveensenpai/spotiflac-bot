@@ -1,0 +1,27 @@
+# SpotiFLAC Bot Configuration
+
+[bot]
+# List of Telegram user IDs allowed to use the bot.
+# Leave empty ([]) to allow all users.
+allowed_user_ids = [8703708885]
+
+[download]
+# Temporary directory where downloads are staged before upload
+download_dir = "/tmp/spotiflac"
+
+# Telegram max file size threshold in MB (Telegram hard limit is 50 MB)
+max_file_mb = 49
+
+# Priority-ordered list of lossless FLAC providers
+services = [
+    "tidal-web",
+    "qobuz-web",
+    "deezer",
+    "amazon",
+]
+
+[extensions]
+# Remote community registries used to bootstrap download providers
+registries = [
+    "https://raw.githubusercontent.com/zarzet/SpotiFLAC-Extension/main/registry.json",
+]
