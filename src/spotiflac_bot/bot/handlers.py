@@ -14,7 +14,7 @@ from spotiflac_bot.exceptions import (
 )
 from spotiflac_bot.models.download import DownloadRequest
 from spotiflac_bot.services.downloader import cleanup_session, download_track
-from spotiflac_bot.services.resolver import extract_spotify_url, is_spotify_url
+from spotiflac_bot.services.resolver import resolve_query_to_track_url
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +26,8 @@ _WELCOME = (
     "I'll download the lossless FLAC and send it right here. 🎧"
 )
 
-_SEARCHING = "🔍 Searching and downloading — this may take a minute…"
+_SEARCHING = "🔍 Searching Spotify for match…"
+_DOWNLOADING = "⏳ Downloading lossless FLAC via provider extensions…"
 _UPLOADING = "📤 Download done\\! Uploading to Telegram…"
 
 
@@ -75,22 +76,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not text:
         return
 
-    url = extract_spotify_url(text) if is_spotify_url(text) else None
-    query = url if url else text
-    is_url = url is not None
-
     status = await message.reply_text(_SEARCHING)
 
-    request = DownloadRequest(user_id=user_id, query=query, is_url=is_url)
+    resolved = await resolve_query_to_track_url(text)
+    if not resolved:
+        await status.edit_text(
+            f"❌ Could not find a Spotify track for: `{_esc(text)}`",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
+
+    track_url, title, artist = resolved
+    if title and artist:
+        await status.edit_text(
+            f"🎯 Found: *{_esc(title)}* — {_esc(artist)}\n{_DOWNLOADING}",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+    else:
+        await status.edit_text(_DOWNLOADING)
+
+    request = DownloadRequest(user_id=user_id, query=track_url, is_url=True)
 
     try:
         result = await download_track(request)
 
         await status.edit_text(_UPLOADING, parse_mode=ParseMode.MARKDOWN_V2)
 
+        final_title = result.title or title or "Audio"
+        final_artist = result.artist or artist or "Unknown Artist"
         caption = (
-            f"🎵 *{_esc(result.title)}*\n"
-            f"👤 {_esc(result.artist)}\n"
+            f"🎵 *{_esc(final_title)}*\n"
+            f"👤 {_esc(final_artist)}\n"
             f"💾 `{result.file_size_bytes // (1024 * 1024)} MB`"
         )
 

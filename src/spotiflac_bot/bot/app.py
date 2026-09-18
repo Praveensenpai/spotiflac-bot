@@ -6,6 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from spotiflac_bot.bot.handlers import cmd_help, cmd_start, handle_message
 from spotiflac_bot.config import settings
+from spotiflac_bot.services.downloader import ensure_extensions
 
 
 def build_app() -> Application:  # type: ignore[type-arg]
@@ -24,4 +25,5 @@ def run() -> None:
     log = logging.getLogger(__name__)
     log.info("Starting SpotiFLAC bot — providers: %s", settings.services)
     settings.download_dir.mkdir(parents=True, exist_ok=True)
+    ensure_extensions()
     build_app().run_polling(drop_pending_updates=True)

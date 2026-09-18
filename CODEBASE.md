@@ -132,5 +132,6 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Integrated SpotiFLAC extension registry (`SPOTIFLAC_REGISTRIES`) and auto-bootstrap in `app.py`. Added Spotify metadata search to `resolver.py` so song titles automatically resolve to track URLs. Expanded URL regex for regional paths (`intl-...`).
 - **2026-09-18**: Added `spotiflac-bot.service` unit template for systemd VPS deployment. Verified live token connection to Telegram API (@spotiflacdesubot).
 - **2026-09-18**: Initial project scaffold — all modules written, ruff+mypy green.

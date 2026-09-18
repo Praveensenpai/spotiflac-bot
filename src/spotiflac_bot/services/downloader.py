@@ -1,16 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
 import uuid
 from pathlib import Path
 
-# SpotiFLAC is a sync library — we run it in a thread executor
 from SpotiFLAC import SpotiFLAC
+from SpotiFLAC.extensions.manager import ExtensionManager
 
 from spotiflac_bot.config import settings
 from spotiflac_bot.exceptions import DownloadFailedError, FileTooLargeError
 from spotiflac_bot.models.download import DownloadRequest, DownloadResult
+
+log = logging.getLogger(__name__)
+
+
+def ensure_extensions() -> None:
+    """Bootstrap and verify installed extensions from registry."""
+    log.info("Checking and updating SpotiFLAC extensions...")
+    try:
+        mgr = ExtensionManager()
+        mgr.ensure_download_providers()
+        installed = [ext.name for ext in mgr.list_installed()]
+        log.info("Installed extensions available: %s", installed)
+    except Exception as exc:
+        log.warning("Extension check encountered issue: %s", exc)
 
 
 def _run_download(url: str, out_dir: Path) -> list[Path]:
