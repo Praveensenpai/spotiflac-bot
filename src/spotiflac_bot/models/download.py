@@ -17,3 +17,12 @@ class DownloadResult:
     title: str
     artist: str
     file_size_bytes: int
+
+
+@dataclass(frozen=True)
+class ProgressUpdate:
+    elapsed_seconds: int
+    downloaded_bytes: int
+    total_bytes: int | None
+    speed_mbps: float
+    percent: float | None

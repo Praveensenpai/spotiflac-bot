@@ -1,17 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import shutil
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from SpotiFLAC import SpotiFLAC
+from SpotiFLAC.core.progress import DownloadManager
 from SpotiFLAC.extensions.manager import ExtensionManager
 
 from spotiflac_bot.config import settings
 from spotiflac_bot.exceptions import DownloadFailedError, FileTooLargeError
-from spotiflac_bot.models.download import DownloadRequest, DownloadResult
+from spotiflac_bot.models.download import (
+    DownloadRequest,
+    DownloadResult,
+    ProgressUpdate,
+)
 
 log = logging.getLogger(__name__)
 
@@ -50,10 +58,97 @@ def _collect_metadata(file_path: Path) -> tuple[str, str]:
     return stem, "Unknown Artist"
 
 
-async def download_track(request: DownloadRequest) -> DownloadResult:
-    """Async wrapper: runs SpotiFLAC in executor and returns result."""
+def _scan_dir_bytes(dir_path: Path) -> int:
+    """Sum size of all files in directory safely."""
+    total = 0
+    if not dir_path.exists():
+        return 0
+    for f in dir_path.rglob("*"):
+        if f.is_file():
+            with contextlib.suppress(OSError):
+                total += f.stat().st_size
+    return total
+
+
+async def _monitor_progress(
+    session_dir: Path,
+    stop_event: asyncio.Event,
+    callback: Callable[[ProgressUpdate], Awaitable[None]],
+    interval: float = 3.5,
+) -> None:
+    """Periodically collect metrics and emit progress updates."""
+    start_time = time.time()
+    last_bytes = 0
+    last_time = start_time
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.sleep(interval)
+            if stop_event.is_set():
+                break
+
+            now = time.time()
+            elapsed = int(now - start_time)
+            cur_bytes = _scan_dir_bytes(session_dir)
+
+            total_bytes: int | None = None
+            speed_mbps = 0.0
+            percent: float | None = None
+
+            try:
+                stats = await DownloadManager().get_stats()
+                downloads = stats.get("downloads", [])
+                if downloads:
+                    item = downloads[-1]
+                    total_mb = item.get("total_size", 0.0)
+                    prog_mb = item.get("progress", 0.0)
+                    if total_mb > 0:
+                        total_bytes = int(total_mb * 1024 * 1024)
+                        if cur_bytes == 0 and prog_mb > 0:
+                            cur_bytes = int(prog_mb * 1024 * 1024)
+                        percent = min(100.0, (cur_bytes / total_bytes) * 100.0)
+                    if item.get("speed", 0.0) > 0:
+                        speed_mbps = float(item["speed"])
+            except Exception:
+                pass
+
+            if speed_mbps == 0.0 and now > last_time:
+                time_diff = now - last_time
+                bytes_diff = max(0, cur_bytes - last_bytes)
+                speed_mbps = (bytes_diff / (1024 * 1024)) / time_diff
+
+            last_bytes = cur_bytes
+            last_time = now
+
+            update = ProgressUpdate(
+                elapsed_seconds=elapsed,
+                downloaded_bytes=cur_bytes,
+                total_bytes=total_bytes,
+                speed_mbps=round(speed_mbps, 2),
+                percent=round(percent, 1) if percent is not None else None,
+            )
+            with contextlib.suppress(Exception):
+                await callback(update)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
+
+
+async def download_track(
+    request: DownloadRequest,
+    on_progress: Callable[[ProgressUpdate], Awaitable[None]] | None = None,
+) -> DownloadResult:
+    """Async wrapper: runs SpotiFLAC in executor with optional progress ticker."""
     session_dir = settings.download_dir / str(uuid.uuid4())
     session_dir.mkdir(parents=True, exist_ok=True)
+
+    stop_event = asyncio.Event()
+    monitor_task: asyncio.Task[None] | None = None
+    if on_progress:
+        monitor_task = asyncio.create_task(
+            _monitor_progress(session_dir, stop_event, on_progress)
+        )
 
     try:
         loop = asyncio.get_running_loop()
@@ -71,7 +166,7 @@ async def download_track(request: DownloadRequest) -> DownloadResult:
 
         if size > settings.max_file_bytes:
             raise FileTooLargeError(
-                f"File is {size // (1024 * 1024)} MB — exceeds Telegram's limit."
+                f"File is {size // (1024 * 1024)} MB — exceeds Telegram limit."
             )
 
         title, artist = _collect_metadata(file_path)
@@ -88,6 +183,12 @@ async def download_track(request: DownloadRequest) -> DownloadResult:
     except Exception as exc:
         shutil.rmtree(session_dir, ignore_errors=True)
         raise DownloadFailedError(f"SpotiFLAC error: {exc}") from exc
+    finally:
+        stop_event.set()
+        if monitor_task:
+            monitor_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await monitor_task
 
 
 def cleanup_session(result: DownloadResult) -> None:

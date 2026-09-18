@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from telegram import Message, Update
@@ -12,7 +13,11 @@ from spotiflac_bot.exceptions import (
     FileTooLargeError,
     UnauthorizedUserError,
 )
-from spotiflac_bot.models.download import DownloadRequest
+from spotiflac_bot.models.download import (
+    DownloadRequest,
+    DownloadResult,
+    ProgressUpdate,
+)
 from spotiflac_bot.services.downloader import cleanup_session, download_track
 from spotiflac_bot.services.resolver import resolve_query_to_track_url
 
@@ -46,6 +51,43 @@ def _guard(update: Update) -> tuple[Message, int]:
     return update.message, user_id
 
 
+def _format_size(num_bytes: int) -> str:
+    mb = num_bytes / (1024 * 1024)
+    return f"{mb:.1f} MB"
+
+
+def _format_time(seconds: int) -> str:
+    mins, secs = divmod(seconds, 60)
+    return f"{mins:02d}:{secs:02d}"
+
+
+def _render_bar(percent: float | None, length: int = 12) -> str:
+    if percent is None or percent <= 0:
+        return "▱" * length
+    filled = max(0, min(length, int(length * (percent / 100.0))))
+    return "▰" * filled + "▱" * (length - filled)
+
+
+def _format_progress_text(update: ProgressUpdate, title: str, artist: str) -> str:
+    track_info = f"*{_esc(title)}* — {_esc(artist)}" if title else "Lossless Audio"
+    bar = _render_bar(update.percent)
+    size_str = _format_size(update.downloaded_bytes)
+    if update.total_bytes and update.total_bytes > 0:
+        size_disp = f"{size_str} / {_format_size(update.total_bytes)}"
+    else:
+        size_disp = size_str
+
+    pct_str = f"{update.percent:.0f}%" if update.percent is not None else ""
+    speed_str = f"{update.speed_mbps:.1f} MB/s"
+    time_str = _format_time(update.elapsed_seconds)
+
+    return (
+        f"⏳ Downloading: {track_info}\n\n"
+        f"`{bar}` {pct_str} \\({_esc(size_disp)}\\)\n"
+        f"⚡ Speed: `{_esc(speed_str)}` · ⏱ `{_esc(time_str)}`"
+    )
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         message, _ = _guard(update)
@@ -60,6 +102,25 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await cmd_start(update, context)
+
+
+async def _send_audio_result(
+    message: Message, result: DownloadResult, title: str, artist: str
+) -> None:
+    final_title = result.title or title or "Audio"
+    final_artist = result.artist or artist or "Unknown Artist"
+    caption = (
+        f"🎵 *{_esc(final_title)}*\n"
+        f"👤 {_esc(final_artist)}\n"
+        f"💾 `{result.file_size_bytes // (1024 * 1024)} MB`"
+    )
+    with result.file_path.open("rb") as audio_file:
+        await message.reply_audio(
+            audio=audio_file,
+            caption=caption,
+            parse_mode=ParseMode.MARKDOWN_V2,
+            filename=result.file_path.name,
+        )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -77,7 +138,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     status = await message.reply_text(_SEARCHING)
-
     resolved = await resolve_query_to_track_url(text)
     if not resolved:
         await status.edit_text(
@@ -87,37 +147,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     track_url, title, artist = resolved
-    if title and artist:
-        await status.edit_text(
-            f"🎯 Found: *{_esc(title)}* — {_esc(artist)}\n{_DOWNLOADING}",
-            parse_mode=ParseMode.MARKDOWN_V2,
-        )
-    else:
-        await status.edit_text(_DOWNLOADING)
+    await status.edit_text(
+        f"🎯 Found: *{_esc(title or 'Track')}* — {_esc(artist or '')}\n{_DOWNLOADING}",
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+    async def _on_progress(prog: ProgressUpdate) -> None:
+        card = _format_progress_text(prog, title, artist)
+        with contextlib.suppress(Exception):
+            await status.edit_text(card, parse_mode=ParseMode.MARKDOWN_V2)
 
     request = DownloadRequest(user_id=user_id, query=track_url, is_url=True)
 
     try:
-        result = await download_track(request)
-
+        result = await download_track(request, on_progress=_on_progress)
         await status.edit_text(_UPLOADING, parse_mode=ParseMode.MARKDOWN_V2)
-
-        final_title = result.title or title or "Audio"
-        final_artist = result.artist or artist or "Unknown Artist"
-        caption = (
-            f"🎵 *{_esc(final_title)}*\n"
-            f"👤 {_esc(final_artist)}\n"
-            f"💾 `{result.file_size_bytes // (1024 * 1024)} MB`"
-        )
-
-        with result.file_path.open("rb") as audio_file:
-            await message.reply_audio(
-                audio=audio_file,
-                caption=caption,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                filename=result.file_path.name,
-            )
-
+        await _send_audio_result(message, result, title, artist)
         await status.delete()
         cleanup_session(result)
 
@@ -127,7 +172,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "⚠️ File is too large to send via Telegram \\(\\>50 MB\\)\\.",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
-
     except DownloadFailedError as exc:
         log.error("Download failed for user %s: %s", user_id, exc)
         await status.edit_text(
@@ -135,7 +179,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "Make sure the link is valid and providers are configured\\.",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
-
     except Exception:
         log.exception("Unexpected error for user %s", user_id)
         await status.edit_text("💥 Something went wrong\\. Please try again later\\.")
