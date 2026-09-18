@@ -29,7 +29,18 @@ async def resolve_query_to_track_url(
     if is_spotify_url(trimmed):
         url = extract_spotify_url(trimmed)
         if url:
-            return url, "", ""
+            title = ""
+            artists = ""
+            try:
+                client = SpotifyMetadataClient()
+                meta = await client.get_metadata_from_url_async(url)
+                if meta:
+                    title = getattr(meta, "title", "") or ""
+                    artists = getattr(meta, "artists", "") or ""
+                    log.info("Resolved Spotify URL %s -> %s - %s", url, title, artists)
+            except Exception as exc:
+                log.warning("Spotify metadata lookup skipped for %s: %s", url, exc)
+            return url, title, artists
 
     log.info("Searching Spotify for track name: %s", trimmed)
     try:

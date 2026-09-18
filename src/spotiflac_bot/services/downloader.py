@@ -9,7 +9,6 @@ import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from mutagen.flac import FLAC
 from SpotiFLAC import SpotiFLAC
 from SpotiFLAC.core.progress import DownloadManager
 from SpotiFLAC.core.quality import quality_fallback_chain
@@ -21,6 +20,12 @@ from spotiflac_bot.models.download import (
     DownloadRequest,
     DownloadResult,
     ProgressUpdate,
+)
+from spotiflac_bot.services.audio_meta import (
+    collect_metadata,
+    detect_duration_seconds,
+    detect_resolution,
+    extract_and_create_thumbnail,
 )
 
 log = logging.getLogger(__name__)
@@ -38,22 +43,6 @@ def ensure_extensions() -> None:
         log.warning("Extension check encountered issue: %s", exc)
 
 
-def _detect_resolution(file_path: Path) -> str:
-    """Inspect audio header to detect true bit-depth and sample rate."""
-    if file_path.suffix.lower() == ".flac":
-        try:
-            # upstream mutagen lacks typed stubs
-            audio = FLAC(file_path)  # type: ignore[no-untyped-call]
-            bits = getattr(audio.info, "bits_per_sample", 0)
-            rate_khz = getattr(audio.info, "sample_rate", 0) / 1000.0
-            if bits > 0 and rate_khz > 0:
-                return f"{bits}-bit / {rate_khz:.1f} kHz FLAC"
-        except Exception:
-            pass
-        return "Lossless FLAC"
-    return file_path.suffix.lstrip(".").upper()
-
-
 def _attempt_tier_download(
     url: str, out_dir: Path, tier: str, allow_fb: bool
 ) -> list[Path]:
@@ -67,6 +56,7 @@ def _attempt_tier_download(
             allow_fallback=allow_fb,
             use_artist_subfolders=False,
             use_album_subfolders=False,
+            enrich_metadata=settings.enrich_metadata,
         )
         return sorted(out_dir.glob("*.flac")) + sorted(out_dir.glob("*.mp3"))
     except Exception as exc:
@@ -89,32 +79,6 @@ def _run_download(url: str, out_dir: Path) -> list[Path]:
             return files
 
     return sorted(out_dir.glob("*.flac")) + sorted(out_dir.glob("*.mp3"))
-
-
-def _collect_metadata(file_path: Path) -> tuple[str, str]:
-    """Extract title and artist from FLAC tags, falling back to filename."""
-    stem = file_path.stem
-    parts = stem.split(" - ", maxsplit=1)
-    title = parts[0].strip() if len(parts) == 2 else stem
-    artist = parts[1].strip() if len(parts) == 2 else "Unknown Artist"
-
-    if file_path.suffix.lower() == ".flac":
-        with contextlib.suppress(Exception):
-            # upstream mutagen lacks typed stubs
-            audio = FLAC(file_path)  # type: ignore[no-untyped-call]
-            tags = getattr(audio, "tags", None)
-            if tags is not None:
-                raw_title = getattr(tags, "get", lambda _: None)("title")
-                raw_artist = getattr(tags, "get", lambda _: None)("artist")
-                if raw_title:
-                    first_t = raw_title[0] if isinstance(raw_title, list) else raw_title
-                    title = str(first_t)
-                if raw_artist:
-                    is_lst = isinstance(raw_artist, list)
-                    first_a = raw_artist[0] if is_lst else raw_artist
-                    artist = str(first_a)
-
-    return title, artist
 
 
 def _scan_dir_bytes(dir_path: Path) -> int:
@@ -228,14 +192,23 @@ async def download_track(
                 f"File is {size // (1024 * 1024)} MB — exceeds Telegram limit."
             )
 
-        title, artist = _collect_metadata(file_path)
-        resolution = _detect_resolution(file_path)
+        title, artist = collect_metadata(
+            file_path,
+            expected_title=request.expected_title,
+            expected_artist=request.expected_artist,
+        )
+        resolution = detect_resolution(file_path)
+        duration_s = detect_duration_seconds(file_path)
+        thumb_path = extract_and_create_thumbnail(file_path)
+
         return DownloadResult(
             file_path=file_path,
             title=title,
             artist=artist,
             file_size_bytes=size,
             resolution=resolution,
+            duration_seconds=duration_s,
+            thumbnail_path=thumb_path,
         )
 
     except (DownloadFailedError, FileTooLargeError):

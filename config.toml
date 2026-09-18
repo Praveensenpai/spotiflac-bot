@@ -29,6 +29,10 @@ services = [
     "deezer",
 ]
 
+# Enrich metadata from external providers (Deezer/Apple/Qobuz).
+# Set to false to preserve 100% accurate native Spotify metadata and original cover art.
+enrich_metadata = false
+
 [extensions]
 # Remote community registries used to bootstrap download providers
 registries = [

@@ -121,6 +121,11 @@ async def _send_audio_result(
         _run_upload_ticker(status, result, lambda: uploaded_bytes, stop_event)
     )
 
+    thumb_data: bytes | None = None
+    if result.thumbnail_path and result.thumbnail_path.is_file():
+        with contextlib.suppress(OSError):
+            thumb_data = result.thumbnail_path.read_bytes()
+
     try:
         with io.FileIO(str(result.file_path), "rb") as raw_f:
             tracked_io = TrackedFileReader(raw_f, total_bytes, _on_chunk)
@@ -138,6 +143,12 @@ async def _send_audio_result(
                 caption=caption,
                 parse_mode=ParseMode.MARKDOWN_V2,
                 filename=result.file_path.name,
+                title=result.title,
+                performer=result.artist,
+                duration=(
+                    result.duration_seconds if result.duration_seconds > 0 else None
+                ),
+                thumbnail=thumb_data,
             )
     finally:
         stop_event.set()
@@ -208,7 +219,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         with contextlib.suppress(Exception):
             await status.edit_text(card, parse_mode=ParseMode.MARKDOWN_V2)
 
-    request = DownloadRequest(user_id=user_id, query=track_url, is_url=True)
+    request = DownloadRequest(
+        user_id=user_id,
+        query=track_url,
+        is_url=True,
+        expected_title=title,
+        expected_artist=artist,
+    )
 
     try:
         result = await download_track(request, on_progress=_on_progress)

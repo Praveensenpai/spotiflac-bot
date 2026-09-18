@@ -42,6 +42,7 @@ class DownloadConfig:
     services: list[str]
     quality: str
     allow_fallback: bool
+    enrich_metadata: bool = False
 
 
 def _parse_download_cfg(dl_cfg: object) -> DownloadConfig:
@@ -50,6 +51,7 @@ def _parse_download_cfg(dl_cfg: object) -> DownloadConfig:
     services = ["tidal-web", "qobuz-web", "deezer", "amazon"]
     quality = "HI_RES_LOSSLESS"
     allow_fallback = True
+    enrich_metadata = False
 
     if isinstance(dl_cfg, dict):
         if "download_dir" in dl_cfg:
@@ -62,6 +64,8 @@ def _parse_download_cfg(dl_cfg: object) -> DownloadConfig:
             quality = str(dl_cfg["quality"]).strip().upper()
         if "allow_fallback" in dl_cfg:
             allow_fallback = bool(dl_cfg["allow_fallback"])
+        if "enrich_metadata" in dl_cfg:
+            enrich_metadata = bool(dl_cfg["enrich_metadata"])
 
     return DownloadConfig(
         download_dir=dl_dir,
@@ -69,6 +73,7 @@ def _parse_download_cfg(dl_cfg: object) -> DownloadConfig:
         services=services,
         quality=quality,
         allow_fallback=allow_fallback,
+        enrich_metadata=enrich_metadata,
     )
 
 
@@ -110,6 +115,10 @@ class Settings:
     @property
     def allow_fallback(self) -> bool:
         return self.download.allow_fallback
+
+    @property
+    def enrich_metadata(self) -> bool:
+        return self.download.enrich_metadata
 
     @classmethod
     def load(cls) -> Settings:
