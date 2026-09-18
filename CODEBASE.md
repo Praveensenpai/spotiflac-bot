@@ -132,4 +132,5 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Added `spotiflac-bot.service` unit template for systemd VPS deployment. Verified live token connection to Telegram API (@spotiflacdesubot).
 - **2026-09-18**: Initial project scaffold — all modules written, ruff+mypy green.
