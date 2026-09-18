@@ -92,12 +92,29 @@ def _run_download(url: str, out_dir: Path) -> list[Path]:
 
 
 def _collect_metadata(file_path: Path) -> tuple[str, str]:
-    """Extract title/artist from filename as fallback."""
+    """Extract title and artist from FLAC tags, falling back to filename."""
     stem = file_path.stem
     parts = stem.split(" - ", maxsplit=1)
-    if len(parts) == 2:
-        return parts[1].strip(), parts[0].strip()
-    return stem, "Unknown Artist"
+    title = parts[0].strip() if len(parts) == 2 else stem
+    artist = parts[1].strip() if len(parts) == 2 else "Unknown Artist"
+
+    if file_path.suffix.lower() == ".flac":
+        with contextlib.suppress(Exception):
+            # upstream mutagen lacks typed stubs
+            audio = FLAC(file_path)  # type: ignore[no-untyped-call]
+            tags = getattr(audio, "tags", None)
+            if tags is not None:
+                raw_title = getattr(tags, "get", lambda _: None)("title")
+                raw_artist = getattr(tags, "get", lambda _: None)("artist")
+                if raw_title:
+                    first_t = raw_title[0] if isinstance(raw_title, list) else raw_title
+                    title = str(first_t)
+                if raw_artist:
+                    is_lst = isinstance(raw_artist, list)
+                    first_a = raw_artist[0] if is_lst else raw_artist
+                    artist = str(first_a)
+
+    return title, artist
 
 
 def _scan_dir_bytes(dir_path: Path) -> int:
