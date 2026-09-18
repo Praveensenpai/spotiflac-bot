@@ -92,7 +92,7 @@
 Set up system dependencies (`xvfb`, `ffmpeg`, `chromium`), install [`uv`](https://docs.astral.sh/uv/), synchronize packages, configure credentials, and deploy the systemd service in one automated command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Praveensenpai/spotiflac-bot/main/install.sh | bash
+curl -fsSL -H "Accept: application/vnd.github.v3.raw" "https://api.github.com/repos/Praveensenpai/spotiflac-bot/contents/install.sh" | bash
 ```
 
 <br>
