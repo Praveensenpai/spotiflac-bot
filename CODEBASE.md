@@ -164,7 +164,7 @@ Telegram Update ──► handlers.py (_guard → handle_message)
 - **Responsibility**: `python -m spotiflac_bot` entrypoint.
 - **Calls**: `bot.app.run()`
 
-### `install.sh` (Role: cli/infra, Lines: 215)
+### `install.sh` (Role: cli/infra, Lines: 230)
 - **Responsibility**: Production-grade automated installer & systemd setup script (`set -euo pipefail`).
 - **Functionality**: Auto-installs system packages (`xvfb`, `ffmpeg`, `chromium`, `curl`, `git`), installs `uv`, runs `uv sync`, interactively prompts for `BOT_TOKEN` and whitelist `allowed_user_ids` into `.env` and `config.toml`, and configures & enables `/etc/systemd/system/spotiflac-bot.service` with `DISPLAY=:99`.
 - **Side Effects**: Installs system packages via `apt`, modifies systemd unit files, enables service.

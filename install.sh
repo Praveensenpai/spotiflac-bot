@@ -128,45 +128,77 @@ if [ ! -f "$INSTALL_DIR/config.toml" ]; then
     fi
 fi
 
+# Detect controlling terminal (works even when piped via curl | bash)
+HAS_TTY=false
+if [ -c /dev/tty ]; then
+    HAS_TTY=true
+fi
+
+# Configure allowed_user_ids in config.toml
+CURRENT_USER_IDS=""
+if [ -f "$INSTALL_DIR/config.toml" ]; then
+    CURRENT_USER_IDS="$(grep -E '^[[:space:]]*allowed_user_ids[[:space:]]*=' "$INSTALL_DIR/config.toml" | sed -E 's/.*=[[:space:]]*//' || true)"
+fi
+
 if [ -n "${ALLOWED_USER_IDS:-}" ]; then
     formatted_ids="$(echo "$ALLOWED_USER_IDS" | awk -F',' '{for(i=1;i<=NF;i++){gsub(/[^0-9]/,"",$i); if(length($i)>0) ids=(ids?ids", ":"")$i}} END {print "["ids"]"}')"
     sed -i "s/allowed_user_ids = .*/allowed_user_ids = $formatted_ids/" "$INSTALL_DIR/config.toml"
     log_ok "Configured allowed_user_ids from environment: $formatted_ids"
-elif [ -t 0 ]; then
-    printf "\n%b👤 Enter allowed Telegram User ID(s) (comma-separated, or Enter for all users):%b " "$COLOR_BOLD" "$COLOR_RESET"
-    read -r input_user_ids
+elif [ "$HAS_TTY" = true ]; then
+    prompt_hint=" (press Enter for all users)"
+    if [ -n "$CURRENT_USER_IDS" ] && [ "$CURRENT_USER_IDS" != "[]" ]; then
+        prompt_hint=" (current: $CURRENT_USER_IDS, press Enter to keep)"
+    fi
+    printf "\n%b👤 Enter allowed Telegram User ID(s)%s:%b " "$COLOR_BOLD" "$prompt_hint" "$COLOR_RESET"
+    read -r input_user_ids < /dev/tty
     input_trimmed="$(echo "$input_user_ids" | tr -d '[:space:]')"
     if [ -n "$input_trimmed" ] && [ "$input_trimmed" != "all" ]; then
         formatted_ids="$(echo "$input_user_ids" | awk -F',' '{for(i=1;i<=NF;i++){gsub(/[^0-9]/,"",$i); if(length($i)>0) ids=(ids?ids", ":"")$i}} END {print "["ids"]"}')"
         sed -i "s/allowed_user_ids = .*/allowed_user_ids = $formatted_ids/" "$INSTALL_DIR/config.toml"
         log_ok "Configured allowed_user_ids in config.toml: $formatted_ids"
+    elif [ -z "$input_trimmed" ] && [ -n "$CURRENT_USER_IDS" ]; then
+        log_info "Keeping existing allowed_user_ids: $CURRENT_USER_IDS"
     else
         sed -i "s/allowed_user_ids = .*/allowed_user_ids = []/" "$INSTALL_DIR/config.toml"
-        log_info "No User ID specified — bot will allow all users (allowed_user_ids = [])."
+        log_info "Allowing all users (allowed_user_ids = [])."
     fi
 fi
 chown "$REAL_USER:$REAL_USER" "$INSTALL_DIR/config.toml" 2>/dev/null || true
 
-if [ ! -f "$INSTALL_DIR/.env" ]; then
-    if [ -t 0 ] && [ -z "${BOT_TOKEN:-}" ]; then
-        printf "\n%b🔑 Enter your Telegram BOT_TOKEN (from @BotFather):%b " "$COLOR_BOLD" "$COLOR_RESET"
-        read -r input_token
-        if [ -n "$input_token" ]; then
-            printf "BOT_TOKEN=%s\n" "$input_token" > "$INSTALL_DIR/.env"
-        else
-            cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env" 2>/dev/null || echo "BOT_TOKEN=" > "$INSTALL_DIR/.env"
-        fi
-    else
-        if [ -n "${BOT_TOKEN:-}" ]; then
-            printf "BOT_TOKEN=%s\n" "$BOT_TOKEN" > "$INSTALL_DIR/.env"
-        else
-            cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env" 2>/dev/null || echo "BOT_TOKEN=" > "$INSTALL_DIR/.env"
-        fi
-    fi
-    chown "$REAL_USER:$REAL_USER" "$INSTALL_DIR/.env" 2>/dev/null || true
-    chmod 600 "$INSTALL_DIR/.env" 2>/dev/null || true
-    log_ok "Configured .env file."
+# Configure BOT_TOKEN in .env
+CURRENT_TOKEN=""
+if [ -f "$INSTALL_DIR/.env" ]; then
+    CURRENT_TOKEN="$(grep -E '^BOT_TOKEN=' "$INSTALL_DIR/.env" | cut -d= -f2- | tr -d ' "' || true)"
 fi
+
+if [ -n "${BOT_TOKEN:-}" ]; then
+    printf "BOT_TOKEN=%s\n" "$BOT_TOKEN" > "$INSTALL_DIR/.env"
+    log_ok "Configured BOT_TOKEN from environment."
+elif [ "$HAS_TTY" = true ]; then
+    prompt_hint=""
+    if [ -n "$CURRENT_TOKEN" ]; then
+        masked_token="${CURRENT_TOKEN:0:8}...${CURRENT_TOKEN: -4}"
+        prompt_hint=" (current: $masked_token, press Enter to keep)"
+    fi
+    printf "\n%b🔑 Enter your Telegram BOT_TOKEN from @BotFather%s:%b " "$COLOR_BOLD" "$prompt_hint" "$COLOR_RESET"
+    read -r input_token < /dev/tty
+    input_token="$(echo "$input_token" | tr -d '[:space:]')"
+    if [ -n "$input_token" ]; then
+        printf "BOT_TOKEN=%s\n" "$input_token" > "$INSTALL_DIR/.env"
+        log_ok "Configured BOT_TOKEN in .env."
+    elif [ -n "$CURRENT_TOKEN" ]; then
+        log_info "Keeping existing BOT_TOKEN."
+    else
+        cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env" 2>/dev/null || echo "BOT_TOKEN=" > "$INSTALL_DIR/.env"
+    fi
+else
+    if [ ! -f "$INSTALL_DIR/.env" ]; then
+        cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env" 2>/dev/null || echo "BOT_TOKEN=" > "$INSTALL_DIR/.env"
+    fi
+fi
+chown "$REAL_USER:$REAL_USER" "$INSTALL_DIR/.env" 2>/dev/null || true
+chmod 600 "$INSTALL_DIR/.env" 2>/dev/null || true
+log_ok "Configured .env file."
 
 # 6. Configure & deploy systemd service
 SERVICE_PATH="/etc/systemd/system/spotiflac-bot.service"
