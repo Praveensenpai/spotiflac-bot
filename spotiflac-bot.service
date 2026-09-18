@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
+# Replace %USER% and paths with your server user and installation directory (e.g., /opt/spotiflac-bot)
 User=%USER%
 WorkingDirectory=/home/paisen/Projects/spotiflac-bot
 EnvironmentFile=/home/paisen/Projects/spotiflac-bot/.env

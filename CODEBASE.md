@@ -137,6 +137,7 @@ uv run python -m spotiflac_bot
 
 ## 6. Recent Changes
 
+- **2026-09-18**: Documented headless Linux VPS deployment and autonomous Cloudflare challenge bypass via Xvfb (`:99`) and off-screen Chromium in `README.md` and `spotiflac-bot.service`.
 - **2026-09-18**: Added rich Unicode block progress bar (`[████████░░░░]`) and real-time streaming upload tracking via `bot/progress.py` (`TrackedFileReader`, `render_progress_card`) with transfer rate and ETA estimates.
 - **2026-09-18**: Implemented multi-pass quality probing across providers (`_attempt_tier_download`, `_run_download`) to guarantee highest resolution is found first before stepping down. Added `_detect_resolution` via mutagen FLAC header inspection to show real-time bit-depth and sample rate in Telegram audio messages.
 - **2026-09-18**: Added configurable audio quality tier (`quality = "HI_RES_LOSSLESS"` or `"DOLBY_ATMOS"`) and automatic cascading fallback (`allow_fallback = true`) in `config.toml`, `config.py`, and `downloader.py`.

@@ -131,37 +131,52 @@ uv run python -m spotiflac_bot
 
 ---
 
-### Option B: Run 24/7 as a Background Service (Linux VPS)
+### Option B: Headless Linux VPS / 24/7 Background Service
 
-A systemd unit file is included at [`spotiflac-bot.service`](spotiflac-bot.service) for production VPS deployments.
+On headless Linux servers, Cloudflare Turnstile challenges block standard headless browsers. SpotiFLAC solves this autonomously by detecting headless environments, automatically launching a virtual display via **Xvfb** (`:99`), and driving Chromium offscreen without needing a physical monitor.
 
-#### 1. Copy the Unit File
+#### 1. Install VPS System Dependencies
+
 ```bash
-sudo cp /home/paisen/Projects/spotiflac-bot/spotiflac-bot.service /etc/systemd/system/
+# Ubuntu / Debian VPS
+sudo apt-get update && sudo apt-get install -y \
+  curl \
+  git \
+  ffmpeg \
+  nodejs \
+  npm \
+  xvfb \
+  chromium-browser
+
+# If your distro lacks the chromium-browser apt package:
+# wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+# sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
 ```
 
-#### 2. Reload Systemd & Enable Service
+#### 2. Deploy Systemd Service
+
+A production-ready unit file is included at [`spotiflac-bot.service`](spotiflac-bot.service):
+
 ```bash
+# 1. Copy unit file to systemd directory
+sudo cp spotiflac-bot.service /etc/systemd/system/
+
+# 2. Adjust User and WorkingDirectory to match your server path
+sudo nano /etc/systemd/system/spotiflac-bot.service
+
+# 3. Reload systemd & start bot
 sudo systemctl daemon-reload
 sudo systemctl enable --now spotiflac-bot
-```
 
-#### 3. Monitor Service Status & Logs
-```bash
-# Check service status
-sudo systemctl status spotiflac-bot
-
-# Follow live logs in real-time
+# 4. Monitor live service logs
 journalctl -u spotiflac-bot -f
 ```
 
-#### 4. Managing the Service
+#### 3. Managing the Service
 ```bash
-# Restart bot after updating config
-sudo systemctl restart spotiflac-bot
-
-# Stop bot
-sudo systemctl stop spotiflac-bot
+sudo systemctl restart spotiflac-bot   # Restart bot
+sudo systemctl stop spotiflac-bot      # Stop bot
+sudo systemctl status spotiflac-bot    # View status
 ```
 
 ---
