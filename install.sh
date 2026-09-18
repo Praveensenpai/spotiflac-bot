@@ -127,6 +127,24 @@ if [ ! -f "$INSTALL_DIR/config.toml" ]; then
         log_info "Created config.toml from template."
     fi
 fi
+
+if [ -n "${ALLOWED_USER_IDS:-}" ]; then
+    formatted_ids="$(echo "$ALLOWED_USER_IDS" | awk -F',' '{for(i=1;i<=NF;i++){gsub(/[^0-9]/,"",$i); if(length($i)>0) ids=(ids?ids", ":"")$i}} END {print "["ids"]"}')"
+    sed -i "s/allowed_user_ids = .*/allowed_user_ids = $formatted_ids/" "$INSTALL_DIR/config.toml"
+    log_ok "Configured allowed_user_ids from environment: $formatted_ids"
+elif [ -t 0 ]; then
+    printf "\n%b👤 Enter allowed Telegram User ID(s) (comma-separated, or Enter for all users):%b " "$COLOR_BOLD" "$COLOR_RESET"
+    read -r input_user_ids
+    input_trimmed="$(echo "$input_user_ids" | tr -d '[:space:]')"
+    if [ -n "$input_trimmed" ] && [ "$input_trimmed" != "all" ]; then
+        formatted_ids="$(echo "$input_user_ids" | awk -F',' '{for(i=1;i<=NF;i++){gsub(/[^0-9]/,"",$i); if(length($i)>0) ids=(ids?ids", ":"")$i}} END {print "["ids"]"}')"
+        sed -i "s/allowed_user_ids = .*/allowed_user_ids = $formatted_ids/" "$INSTALL_DIR/config.toml"
+        log_ok "Configured allowed_user_ids in config.toml: $formatted_ids"
+    else
+        sed -i "s/allowed_user_ids = .*/allowed_user_ids = []/" "$INSTALL_DIR/config.toml"
+        log_info "No User ID specified — bot will allow all users (allowed_user_ids = [])."
+    fi
+fi
 chown "$REAL_USER:$REAL_USER" "$INSTALL_DIR/config.toml" 2>/dev/null || true
 
 if [ ! -f "$INSTALL_DIR/.env" ]; then
